@@ -5,11 +5,262 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <title>Flappy Learn</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" type="text/css" media="screen" href="css/main.css" />
-        <script src="js/main.js"     type="text/javascript"></script>
-        <script src="js/nn.js"       type="text/javascript"></script>
-        <script src="js/pipes.js"    type="text/javascript"></script>
-        <script src="js/bird.js"     type="text/javascript"></script>
+        <style>
+            * {
+                margin: 0px;
+                padding: 0px;
+            }
+
+            body {
+                background-color: black;
+            }
+        </style>
+        <script>
+            const numBirds = 1000;
+            const width = 400, height = 600;
+
+            function random(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            window.addEventListener("load", function(e) {
+                let birds = new Array();
+                let pipes = new Pipes();
+
+                for (let i = 0; i < numBirds; i ++) {
+                    birds.push(new Bird());
+                }
+
+                let canvas = document.getElementById("canvas");
+                canvas.setAttribute("width", width);
+                canvas.setAttribute("height", height);
+                let ctx = canvas.getContext("2d");
+
+                function draw() {
+                    ctx.fillStyle = 'rgb(51, 51, 51)';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    for (let bird of birds) {
+                        bird.render(ctx);
+                        bird.update(pipes);
+                    }
+                
+                    pipes.render(ctx);
+                    pipes.update();
+                
+                    let allDead        = true;
+                    let biggestFitness = 0;
+                    let bestBrain      = null;
+                
+                    for (let bird of birds) {
+                        if (bird.fitness > biggestFitness) {
+                            biggestFitness = bird.fitness;
+                            bestBrain = bird.brain;
+                        }
+                        if (bird.isAlive == true) {
+                            allDead = false;
+                            break;
+                        }
+                    }
+                
+                    if (allDead == true) {
+                        pipes = new Pipes();
+                
+                        for (let i = 0; i < birds.length; i ++) {
+                            birds[i] = new Bird();
+                            birds[i].brain = bestBrain.copy();
+                            birds[i].brain.mutate(0.1);
+                        }
+                    }
+                    requestAnimationFrame(draw);
+                };
+
+                draw();
+            });
+
+            class NeuralNetwork {
+                constructor(in_nodes, hid_nodes, out_nodes) {
+                    this.input_nodes  = in_nodes;
+                    this.hidden_nodes = hid_nodes;
+                    this.output_nodes = out_nodes;
+
+                    this.hidden_layer = new Layer(in_nodes,  hid_nodes);
+                    this.output_layer = new Layer(hid_nodes, out_nodes);
+                }
+
+                predict(inputs) {
+                    let outputs = [];
+
+                    let hidden_outputs = new Array(this.hidden_nodes);
+
+                    for (let i = 0; i < this.hidden_nodes; i ++) {
+                    hidden_outputs[i] = this.hidden_layer.calc(i, inputs);
+                    }
+
+                    for (let i = 0; i < this.output_nodes; i ++) {
+                    outputs[i] = this.output_layer.calc(i, hidden_outputs);
+                    }
+
+                    return outputs;
+                }
+
+                copy() {
+                    let new_nn = new NeuralNetwork(this.input_nodes, this.hidden_nodes, this.output_nodes);
+                    new_nn.hidden_layer.weights = this.hidden_layer.weights.slice();
+                    new_nn.output_layer.weights = this.output_layer.weights.slice();
+                    new_nn.hidden_layer.biases = this.hidden_layer.biases.slice();
+                    new_nn.output_layer.biases = this.output_layer.biases.slice();
+                    return new_nn;
+                }
+
+                doMutate(x) {
+                    if (x > Math.random()) return true;
+                    return false;
+                }
+
+                mutate(x) {
+                    for (let i = 0; i < this.hidden_layer.weights.length; i ++) {if (this.doMutate(x)) {this.hidden_layer.weights[i] = newWorB();}}
+                    for (let i = 0; i < this.hidden_layer.biases.length;  i ++) {if (this.doMutate(x)) {this.hidden_layer.biases[i]  = newWorB();}}
+                    for (let i = 0; i < this.output_layer.weights.length; i ++) {if (this.doMutate(x)) {this.output_layer.weights[i] = newWorB();}}
+                    for (let i = 0; i < this.output_layer.biases.length;  i ++) {if (this.doMutate(x)) {this.output_layer.biases[i]  = newWorB();}}
+                }
+            }
+
+            class Layer {
+                constructor(prev_nodes, nodes) {
+                    this.weights = new Array(nodes);
+                    this.biases  = new Array(nodes);
+
+                    for (let i = 0; i < prev_nodes; i ++) {
+                        this.weights[i] = new Array(prev_nodes);
+                    for (let j = 0; j < this.weights[i].length; j ++) {
+                            this.weights[i][j] = newWorB();
+                        }
+                    }
+
+                    for (let i = 0; i < this.biases.length; i ++) {
+                        this.biases[i] = newWorB();
+                    }
+                }
+
+                calc(node, inputs) {
+                    let output = null;
+
+                    for (let i = 0; i < this.weights.length; i ++) {
+                        output += inputs[i] * this.weights[node][i];
+                    }
+
+                    output += this.biases[node];
+                    output = sigmoid(output);
+
+                    return output;
+                }
+            }
+
+            function newWorB() {
+                let a = Math.random();
+                if (Math.random() > 0.5) a = -a;
+                    return a;
+            }
+
+            function sigmoid(x) {
+                return (1 / (1 + Math.pow(Math.E, -x)));
+            }
+            
+            class Pipes {
+                constructor() {
+                    this.speed = 1;
+                    this.maxSpeed = 5;
+                    this.makeNewPipes();
+                }
+
+                makeNewPipes() {
+                    this.x = width;
+                    this.w = width / 10;
+                    this.yTop    = 0;
+                    this.hTop    = random(height / 3, height / 1.75);
+                    this.yBottom = this.hTop + 80;
+                    this.hBottom = height - this.hTop;
+                }
+
+                render(ctx) {
+                    ctx.fillStyle = "red";
+                    ctx.fillRect(this.x, this.yTop,    this.w, this.hTop);
+                    ctx.fillRect(this.x, this.yBottom, this.w, this.hBottom);
+                }
+
+                update() {
+                    this.x -= this.speed;
+
+                    if (this.x + this.w <= 0) {
+                        this.makeNewPipes();
+                        this.speed += 0.5;
+                        if (this.speed >= this.maxSpeed) this.speed = this.maxSpeed;
+                    }
+                }
+            }
+
+            class Bird {
+                constructor() {
+                    this.fitness = 0;
+                    this.isAlive = true;
+                    this.s = 20;
+                    this.x = this.s;
+                    this.y = height / 2 - this.s / 2;
+                    this.v = 0;
+                    this.g = 0.15;
+                    this.maxV = 7;
+
+                    this.brain = new NeuralNetwork(5, 4, 1);
+                }
+
+                render(ctx) {
+                    if (this.isAlive == true) {
+                        ctx.fillStyle = "blue";
+                        ctx.fillRect(this.x, this.y, this.s, this.s);
+                    }
+                }
+
+                update(pipes) {
+                    if (this.isAlive == true) {
+                        let inputs = [
+                            this.y / height, 
+                            this.v, (pipes.x - this.x) / width, 
+                            pipes.yTop / height, 
+                            pipes.yBottom / height];
+
+                        if (this.brain.predict(inputs)[0] > 0.5) this.up();                
+
+                        this.v += this.g;
+                        this.y += this.v;
+
+                        if (this.v > this.maxV)  this.v = this. maxV;
+                        if (this.v < -this.maxV) this.v = -this.maxV;
+
+                        let died = false;
+
+                        if (this.y > height || this.y + this.s < 0) died = true;
+                        if (this.x < pipes.x + pipes.w && this.x + this.s > pipes.x) {
+                            if (this.y < pipes.yTop + pipes.hTop && this.y + this.s > pipes.yTop) died = true;
+                            if (this.y < pipes.yBottom + pipes.hBottom && this.y + this.s > pipes.yBottom) died = true;
+                        }
+
+                        if (!died) this.fitness += 1;
+                        if (died)  this.isAlive = false;
+                    }
+                }
+
+                calculateFitness(maxFitness) {
+                    this.fitness /= maxFitness;
+                }
+
+                up() {
+                    if (this.isAlive == true) {
+                        this.v -= 5;
+                    }
+                }
+            }
+        </script>
     </head>
     <body>
         <canvas id="canvas"></canvas>
